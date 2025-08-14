@@ -14,8 +14,50 @@
 
 # cytodatagen
 
-> Generate synthetic cytometry data
+> Generate synthetic cytometry data for classification tasks
 
+This package provides modular and highly configurable tools to generate synthetic flow cytometry/CyTOF data for classification tasks.
+Supported formats are `fcs` and `h5ad`.
+
+In general, for each subject, the generator samples cell type proportions from a Dirichlet distribution, and cells from cell type specific multivariate normals.
+Then, the generator applies different *effects*, that affect either *cell type compositions* or *marker expression* within samples.
+
+Composition Effects:
+
+- "switch": switches the proportion of some cell types within affected samples
+
+Expression Effects:
+
+- "signal": changes the expression values of class specific markers within certain cell types
+- "batch": divides samples from each class in batches and applies a batch shift
+- "noise": applies Gaussian noise to each channel given by a SNR
+- "sinh": inverse to the popular arsinh transform
+- "exp": inverse to the logarithmic transform
+
+## Installation
+
+```sh
+pip install -e .
+
+# or install with extras for jupyter notebooks
+pip install -e .[notebook]
+```
+
+## Usage
+
+The package provides a CLI:
+
+```sh
+# display help message
+python -m cytodatagen --help
+
+# generate data from command line
+python -m cytodatagen -o cytodata --format fcs
+```
+
+## Acknowledgements
+
+Thanks to the FlowKit and anndata team.
 
 <!-- pyscaffold-notes -->
 
