@@ -14,9 +14,7 @@
 
 # cytodatagen
 
-> Add a short description here!
-
-A longer description of your project goes here...
+> Generate synthetic cytometry data
 
 
 <!-- pyscaffold-notes -->
