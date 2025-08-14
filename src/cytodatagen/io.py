@@ -38,6 +38,6 @@ def write_fcs(path, adata: ad.AnnData, sample_id: str = "sample_id"):
 def write_h5ad(path, adata: ad.AnnData):
     path = Path(path)
     path.mkdir(exist_ok=True, parents=True)
-    file_path = path / "cytogen.h5ad"
+    file_path = path / "cytodata.h5ad"
     logger.info("writing hda5 file to %s", file_path)
     adata.write_h5ad(file_path)

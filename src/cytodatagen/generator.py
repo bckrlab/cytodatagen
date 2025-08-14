@@ -19,7 +19,7 @@ from cytodatagen.effects import BatchEffect, ClassSignalEffect, SwitchCompositio
 
 logger = logging.getLogger(__name__)
 
-config_doc = """
+_config_args_doc = """
     Args:
         n_class (int): number of classes, including one control class without composition or expressoin effects
         n_samples_per_class (int): number of samples in each class
@@ -38,23 +38,6 @@ config_doc = """
 
 @dc.dataclass
 class CytoDataGeneratorConfig:
-    """
-    Configuration for the CytoDataGenerator.
-
-    Args:
-        n_class (int): number of classes, including one control class without composition or expressoin effects
-        n_samples_per_class (int): number of samples in each class
-        n_cells_min (int): minimum number of cells per sample
-        n_cells_max (int): maximum number of cels per sample
-        n_markers (int): number of markers, i.e., cell features
-        n_ct (int): total number of distinct cell types
-        ct_alpha (float|ArrayLike): alpha for sampling the cell type counts in each sample from a Dirichlet distribution
-        ct_mean_loc (float): mean to sample the cell type means from
-        ct_mean_scale (float): sd for sampling the cell type means
-        composition_effects (dict): specification {effect_key: kwargs} of composition effects
-        expression_effects (dict): specification {effect_key: kwargs} of expression effects
-        seed (int): seed for the random generator
-    """
     n_class: int = 2
     n_samples_per_class: int = 30
     n_cells_min: int = 1024
@@ -67,6 +50,13 @@ class CytoDataGeneratorConfig:
     expression_effects: dict = dc.field(default_factory=dict)
     composition_effects: dict = dc.field(default_factory=dict)
     seed: int = 19
+
+
+CytoDataGeneratorConfig.__doc__ = """
+Configuration for the CytoDataGenerator.
+
+{args}
+""".format(args=_config_args_doc)
 
 
 class CytoDataGenerator:
@@ -143,7 +133,7 @@ class CytoDataGenerator:
         self.params = dict()
 
         # generate cell type data
-        self.params["ct_names"] = np.asarray([self.get_ct_name(self.rng) for i in range(self.config.n_ct)])
+        self.params["ct_names"] = np.asarray([self.get_ct_name() for i in range(self.config.n_ct)])
         self.params["ct_means"] = np.stack([self.rng.normal(self.config.ct_mean_loc, self.config.ct_mean_scale, size=self.config.n_markers) for i in range(self.config.n_ct)])
         self.params["ct_covs"] = [self.rng.normal(size=(self.config.n_markers, self.config.n_markers)) for i in range(self.config.n_ct)]
         self.params["ct_covs"] = np.stack([cov @ cov.T for cov in self.params["ct_covs"]])
@@ -166,6 +156,8 @@ class CytoDataGenerator:
 
     def generate_sample(self, class_id: int, sample_id: int) -> ad.AnnData:
         """generates a new sample for the given cell type means/variances and class label."""
+        alpha = self.config.ct_alpha
+        alpha = np.repeat(alpha, self.config.n_ct) if np.isscalar(alpha) else np.array(alpha)
         alpha = self.apply_composition_effects(class_id, sample_id, alpha)
         ct_counts = self.generate_ct_counts(alpha)
         ct_ids = np.repeat(np.arange(self.config.n_ct), ct_counts)
@@ -235,12 +227,6 @@ def make_cyto_data(
     expression_effects: dict = None,
     seed=19
 ) -> ad.AnnData:
-    """
-    Procedural interface for generating synthetic cytometry data.
-
-    Args:
-
-    """
     composition_effects = dict() if composition_effects is None else composition_effects
     expression_effects = dict() if expression_effects is None else expression_effects
 
@@ -265,3 +251,10 @@ def make_cyto_data(
     adata = generator.generate()
 
     return adata
+
+
+make_cyto_data.__doc__ = """
+Procedural interface for generating synthetic cytometry data.
+
+{args}
+""".format(args=_config_args_doc)

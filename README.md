@@ -22,17 +22,14 @@ Supported formats are `fcs` and `h5ad`.
 In general, for each subject, the generator samples cell type proportions from a Dirichlet distribution, and cells from cell type specific multivariate normals.
 Then, the generator applies different *effects*, that affect either *cell type compositions* or *marker expression* within samples.
 
-Composition Effects:
-
-- "switch": switches the proportion of some cell types within affected samples
-
-Expression Effects:
-
-- "signal": changes the expression values of class specific markers within certain cell types
-- "batch": divides samples from each class in batches and applies a batch shift
-- "noise": applies Gaussian noise to each channel given by a SNR
-- "sinh": inverse to the popular arsinh transform
-- "exp": inverse to the logarithmic transform
+1. Composition Effects:
+     - "switch": switches the proportion of some cell types within affected samples
+2. Expression Effects:
+     - "signal": changes the expression values of class specific markers within certain cell types
+     - "batch": divides samples from each class in batches and applies a batch shift
+     - "noise": applies Gaussian noise to each channel given by a SNR
+     - "sinh": inverse to the popular arsinh transform
+     - "exp": inverse to the logarithmic transform
 
 ## Installation
 

@@ -28,6 +28,7 @@ def make_composition_effects(args):
     composition_effects = dict()
     if args.add_switch_effect:
         composition_effects["switch"] = {
+            "n_switch_ct": args.n_switch_ct,
             "p_switch": args.p_switch
         }
     return composition_effects
@@ -37,10 +38,10 @@ def make_expression_effects(args):
     expression_effects = dict()
     if args.add_signal_effect:
         expression_effects["signal"] = {
+            "n_signal_markers": args.n_signal_markers,
+            "n_signal_ct": args.n_signal_ct,
             "p_cell": args.p_cell,
             "p_sample": args.p_sample,
-            "n_signal_markers": args.n_signal_markers,
-            "n_signal_ct": args.n_signal_ct
         }
 
     if args.add_batch_effect:
@@ -71,15 +72,22 @@ def main():
 
     config_group.add_argument("--n-class", type=int, default=2)
     config_group.add_argument("--n-samples-per-class", type=int, default=30)
-    config_group.add_argument("--n-cells-min", type=int, default=1024)
-    config_group.add_argument("--n-cells-max", type=int, default=1024)
+    config_group.add_argument("--n-cells-min", type=int, default=10_000)
+    config_group.add_argument("--n-cells-max", type=int, default=10_000)
     config_group.add_argument("--n-ct", type=int, default=5)
     config_group.add_argument("--ct-mean-loc", type=float, default=5)
     config_group.add_argument("--ct-mean-scale", type=float, default=1)
     config_group.add_argument("--ct-alpha", type=float, default=1)
     config_group.add_argument("--n-markers", type=int, default=30)
 
+    config_group.add_argument("--add-signal-effect", action="store_true")
+    config_group.add_argument("--n-signal-markers", type=int, default=3)
+    config_group.add_argument("--n-signal-ct", type=int, default=3)
+    config_group.add_argument("--p-cell", type=float, default=0.5)
+    config_group.add_argument("--p-sample", type=float, default=0.5)
+
     config_group.add_argument("--add-switch-effect", action="store_true")
+    config_group.add_argument("--n-switch-ct", type=int, default=2)
     config_group.add_argument("--p-switch", type=float, default=0.9)
 
     config_group.add_argument("--add-batch-effect", action="store_true")
@@ -94,12 +102,6 @@ def main():
 
     config_group.add_argument("--add-exp-effect", action="store_true")
 
-    config_group.add_argument("--add-signal-effect", action="store_true")
-    config_group.add_argument("--n-signal-markers", type=int, default=3)
-    config_group.add_argument("--n-signal-ct", type=int, default=3)
-    config_group.add_argument("--p-cells", type=float, default=0.5)
-    config_group.add_argument("--p-samples", type=float, default=0.5)
-
     config_group.add_argument("--seed", type=int, default=19, help="random seed")
     config_group.add_argument("-f", "--file", type=Path, default=None, help="parse config from json file instead")
 
@@ -110,6 +112,7 @@ def main():
 
     args = parser.parse_args()
 
+    args.output.mkdir(parents=True, exist_ok=True)
     setup_logging(args.output, args.verbose)
 
     if args.file is not None:
@@ -137,8 +140,6 @@ def main():
 
     logger.info("config: %s", json.dumps(config))
     adata = make_cyto_data(**config)
-
-    args.output.mkdir(parents=True, exist_ok=True)
 
     if args.format == "h5ad":
         write_h5ad(args.output, adata)

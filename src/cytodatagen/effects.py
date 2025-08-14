@@ -9,17 +9,6 @@ import anndata as ad
 
 from typing import Union
 
-"""
-cofactor (float): cofactor for the sinh transform, if xform='sinh'
-with_composition_effect (bool): classes will have different cell type compositions by switching ct_alpha values (requires n_signal_ct>=2)
-with_expression_effect (bool): classes will have different marker expressions
-with_batch_shift (bool): samples with different batch_ids will have a batch_shift applied to them
-n_batch (int): number of batches with different batch effects
-batch_scale (float): sd for sampling post-xform shifts for each batch
-marker_snr_db (float|ArrayLike): signal to noise ratio in decibell, for noise that is applied post-xform
-xform ("none"|"exp"|"sinh"): inverse transform that is applied to the marker expressions
-"""
-
 
 class Effect(abc.ABC):
     def __init__(self):
@@ -45,7 +34,7 @@ class SwitchCompositionEffect(CompositionEffect):
         """
         Args:
             n_switch_ct (int): number of cell types that will have their alpha switched
-            p_switch (float): probability of a non-control sample being affected 
+            p_switch (float): probability of a non-control sample being affected
         """
         super().__init__()
         self.n_switch_ct = n_switch_ct
@@ -64,10 +53,10 @@ class SwitchCompositionEffect(CompositionEffect):
         ct_alpha = np.array(ct_alpha)
         if class_id == 0 or rng.random() < self.p_switch:
             return ct_alpha
-        switch_from = self.params["switch_from_ct"][class_id]
-        switch_to = self.params["switch_to_ct"][class_id]
-        ct_alpha[switch_from] = ct_alpha[switch_to]
 
+        switch_from = self.params["switch_from_ct"][class_id - 1]
+        switch_to = self.params["switch_to_ct"][class_id - 1]
+        ct_alpha[switch_from] = ct_alpha[switch_to]
         return ct_alpha
 
 
@@ -110,9 +99,10 @@ class BatchEffect(ExpressionEffect):
 class ClassSignalEffect(ExpressionEffect):
     """Shifts expression values of signal markers in signal cell types for each non-control class."""
 
-    def __init__(self, n_signal_markers: int = 3, n_signal_ct: int = 1, p_cell: float = 0.5, p_sample: float = 0.9):
+    def __init__(self, n_signal_markers: int = 3, n_signal_ct: int = 1, p_cell: float = 0.5, p_sample: float = 0.9,
+                 ct_mean_loc: float = 5, ct_mean_scale: float = 1.0, ct_cov_scale: float = 1.0):
         """
-        Args:        
+        Args:
             n_signal_markers (int): number of markers that carry sample class information
             n_signal_ct (int): number of cell types that carry sample class information
             p_cell (float): probability of cells of a signal cell type to be affected by expression effects
@@ -123,6 +113,9 @@ class ClassSignalEffect(ExpressionEffect):
         self.n_signal_ct = n_signal_ct
         self.p_cell = p_cell
         self.p_sample = p_sample
+        self.ct_mean_loc = ct_mean_loc
+        self.ct_mean_scale = ct_mean_scale
+        self.ct_cov_scale = ct_cov_scale
 
     def fit_params(self, n_class, n_samples_per_class, n_markers, n_ct, rng=None):
         rng = np.random.default_rng(rng)
@@ -134,21 +127,53 @@ class ClassSignalEffect(ExpressionEffect):
             rng.choice(np.arange(n_ct), self.n_signal_ct, replace=False) for i in range(n_class - 1)
         ])
 
+        self.params["ct_mean"] = np.stack([
+            rng.normal(self.ct_mean_loc, self.ct_mean_scale, size=(self.n_signal_ct, self.n_signal_markers)) for i in range(n_class - 1)
+        ])
+
+        # cov should have dimensions class,ct,marker,marker
+        ct_cov = rng.normal(scale=self.ct_cov_scale, size=(n_class - 1, self.n_signal_ct, self.n_signal_markers, self.n_signal_markers))
+        # conveniently, this should do the trick? numpy's matmul treats ndim>2 arrays as stack of 2 dimensional arrays
+        self.params["ct_cov"] = ct_cov @ ct_cov.transpose(0, 1, 3, 2)
+
     def apply(self, class_id, sample_id, adata, rng=None):
         rng = np.random.default_rng(rng)
+        # add meta data
+        if not "signal" in adata.obs:
+            adata.obs["signal"] = False
+
         if not rng.random() < self.p_sample or class_id == 0:
             return adata
-        signal_cts = self.params["signal_cts"][class_id]
-        signal_markers = self.params["signal_markers"][class_id]
-        mask = adata.obs["ct"] == signal_cts
 
+        signal_cts = self.params["signal_cts"][class_id - 1]
+        signal_markers = self.params["signal_markers"][class_id - 1]
+
+        # which cells carry the class signal
+        p_mask = (rng.random(len(adata)) < self.p_cell)
+
+        for i, ct in enumerate(signal_cts):
+            ct_mask = (adata.obs["ct"] == ct)
+            cell_mask = ct_mask & p_mask
+            ct_n = len(np.flatnonzero(cell_mask))
+
+            ct_mean = self.params["ct_mean"][class_id - 1, i]
+            ct_cov = self.params["ct_cov"][class_id - 1, i]
+
+            x_signal = rng.multivariate_normal(ct_mean, ct_cov, size=ct_n)
+
+            # numpy indexing magic to index all elements in respective rows and columns
+            # otherwise, numpy would try to match cell_mask and signal_markers element wise
+            ix = np.ix_(cell_mask, signal_markers)
+            adata.X[ix] = x_signal
+            # update signal mask
+            adata.obs["signal"] = adata.obs["signal"] | cell_mask
         return adata
 
 
 class ExpXformEffect(ExpressionEffect):
     """
     Effect that applies an exponential function as inverse of the logarithmic transform.
-    f(x) := exp(x) 
+    f(x) := exp(x)
     """
 
     def apply(self, class_id, sample_id, adata, rng=None):
