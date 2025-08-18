@@ -83,8 +83,10 @@ class CytoDataGenerator:
         self.config = config
         self.rng: np.random.Generator = None
         self.params: dict = None
-        self.composition_effects: list[CompositionEffect] = None
-        self.expression_effects: list[ExpressionEffect] = None
+        self.composition_effects: dict[str, CompositionEffect] = None
+        self.expression_effects: dict[str, ExpressionEffect] = None
+        self.params_composition: dict[str, dict] = None
+        self.params_expression: dict[str, dict] = None
 
     def generate(self) -> ad.AnnData:
         self.parse_config()
@@ -97,12 +99,15 @@ class CytoDataGenerator:
             class_samples = self.generate_class(class_id)
             samples.extend(class_samples)
             labels.extend([class_id for sample in class_samples])
+        self.pbar.close()
         adata = ad.concat(samples)
 
         # add metadata
         adata.uns["config"] = dc.asdict(self.config)
         adata.uns["labels"] = labels
         adata.uns["params"] = self.params
+        adata.uns["params_composition"] = self.params_composition
+        adata.uns["params_expression"] = self.params_expression
         return adata
 
     def parse_config(self):
@@ -110,23 +115,27 @@ class CytoDataGenerator:
         if self.config.n_cells_min > self.config.n_cells_max:
             raise ValueError("n_cells_min should be less or equal n_cells_max")
 
-        self.composition_effects = []
+        self.pbar = tqdm(total=self.config.n_class * self.config.n_samples_per_class)
+        ct_alpha = self.config.ct_alpha
+        self.ct_alpha = np.repeat(ct_alpha, self.config.n_ct) if np.isscalar(ct_alpha) else np.array(ct_alpha)
+
+        self.composition_effects = dict()
         for key, value in self.config.composition_effects.items():
             cls = self.COMPOSITION_EFFECTS[key]
             if isinstance(value, CompositionEffect):
                 effect = value
             else:
                 effect = cls(**value)
-            self.composition_effects.append(effect)
+            self.composition_effects[key] = effect
 
-        self.expression_effects = []
+        self.expression_effects = dict()
         for key, value in self.config.expression_effects.items():
             cls = self.EXPRESSION_EFFECTS[key]
             if isinstance(value, ExpressionEffect):
                 effect = value
             else:
                 effect = cls(**value)
-            self.expression_effects.append(effect)
+            self.expression_effects[key] = effect
 
     def generate_params(self) -> dict:
         """Generates all parameters, e.g., for cell type distributions."""
@@ -138,11 +147,15 @@ class CytoDataGenerator:
         self.params["ct_covs"] = [self.rng.normal(size=(self.config.n_markers, self.config.n_markers)) for i in range(self.config.n_ct)]
         self.params["ct_covs"] = np.stack([cov @ cov.T for cov in self.params["ct_covs"]])
 
-        for effect in self.composition_effects:
+        self.params_composition = dict()
+        for key, effect in self.composition_effects.items():
             effect.fit_params(self.config.n_class, self.config.n_samples_per_class, self.config.n_markers, self.config.n_ct, rng=self.rng)
+            self.params_composition[key] = effect.params
 
-        for effect in self.expression_effects:
+        self.params_expression = dict()
+        for key, effect in self.expression_effects.items():
             effect.fit_params(self.config.n_class, self.config.n_samples_per_class, self.config.n_markers, self.config.n_ct, rng=self.rng)
+            self.params_expression[key] = effect.params
 
     def generate_class(self, class_id: int):
         samples = []
@@ -152,13 +165,12 @@ class CytoDataGenerator:
             sample_id = n * class_id + i
             sample = self.generate_sample(class_id, sample_id)
             samples.append(sample)
+            self.pbar.update()
         return samples
 
     def generate_sample(self, class_id: int, sample_id: int) -> ad.AnnData:
         """generates a new sample for the given cell type means/variances and class label."""
-        alpha = self.config.ct_alpha
-        alpha = np.repeat(alpha, self.config.n_ct) if np.isscalar(alpha) else np.array(alpha)
-        alpha = self.apply_composition_effects(class_id, sample_id, alpha)
+        alpha = self.apply_composition_effects(class_id, sample_id, np.array(self.ct_alpha))
         ct_counts = self.generate_ct_counts(alpha)
         ct_ids = np.repeat(np.arange(self.config.n_ct), ct_counts)
         cells = []
@@ -174,18 +186,19 @@ class CytoDataGenerator:
             "ct_name": self.params["ct_names"][ct_ids],
         }, index=[f"sample_{sample_id}_cell_{i}" for i in range(len(x))])
 
-        adata = ad.AnnData(X=x, obs=obs, vidx=self.get_var_names())
+        adata = ad.AnnData(X=x, obs=obs)
+        adata.var_names = self.get_var_names()
         adata = self.apply_expression_effects(class_id, sample_id, adata)
 
         return adata
 
     def apply_composition_effects(self, class_id: int, sample_id: int, alpha: np.ndarray) -> np.ndarray:
-        for effect in self.composition_effects:
+        for key, effect in self.composition_effects.items():
             alpha = effect.apply(class_id, sample_id, alpha, rng=self.rng)
         return alpha
 
     def apply_expression_effects(self, class_id: int, sample_id: int, adata: ad.AnnData) -> ad.AnnData:
-        for effect in self.expression_effects:
+        for key, effect in self.expression_effects.items():
             adata = effect.apply(class_id, sample_id, adata, rng=self.rng)
         return adata
 

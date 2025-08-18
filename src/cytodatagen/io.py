@@ -29,15 +29,19 @@ def write_fcs(path, adata: ad.AnnData, sample_id: str = "sample_id"):
         logger.info("writing %s", sample_path)
         sample.export(sample_path, source="raw")
     # write uns as json
-    json_path = path / "info.json"
+    json_path = path / "uns.json"
     with open(json_path, "w") as json_file:
-        logger.info("writing uns info to: %s", json_path)
+        logger.info("writing uns to: %s", json_path)
         json.dump(adata.uns, json_file, cls=NumpyJSONEncoder)
+    # write obs as csv
+    obs_path = path / "obs.csv"
+    logger.info("writing obs to: %s")
+    adata.obs.to_csv(obs_path)
 
 
 def write_h5ad(path, adata: ad.AnnData):
     path = Path(path)
     path.mkdir(exist_ok=True, parents=True)
-    file_path = path / "cytodata.h5ad"
-    logger.info("writing hda5 file to %s", file_path)
-    adata.write_h5ad(file_path)
+    path = path / "cytodata.h5ad"
+    logger.info("writing hda5 file to %s", path)
+    adata.write_h5ad(path)

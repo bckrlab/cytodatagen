@@ -9,6 +9,7 @@ dependencies:
   - matplotlib
   - seaborn
   - ipykernel
+  - scikit-learn
   # setuptools that support version inference from source code management system
   - setuptools-scm
   # scanpy compatible fc analysis package, but felt still a bit clunky

@@ -17,7 +17,14 @@
 	// "postCreateCommand": "python --version",
 
 	// Configure tool-specific properties.
-	// "customizations": {},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-toolsai.jupyter",
+				"mechatroner.rainbow-csv"
+			]
+		}
+	},
 
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
 	"remoteUser": "root"

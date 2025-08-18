@@ -1,0 +1,62 @@
+"""
+Plotting functions for visualizing the generated dataset.
+"""
+
+import anndata as ad
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from sklearn.manifold import TSNE
+
+
+def select_obs(adata: ad.AnnData, *args, key="sample_id") -> ad.AnnData:
+    """Selects data points with obs[key] in *args."""
+    return adata[adata.obs[key].isin(args)]
+
+
+def select_samples(adata: ad.AnnData, *args) -> ad.AnnData:
+    """Selects data points with obs['sample_id'] in *args."""
+    return select_obs(adata, *args, "sample_id")
+
+
+def embed_tsne(adata: ad.AnnData, cat_obs=True, random_state=19, **kwargs) -> pd.DataFrame:
+    """Returns the t-SNE embedding of adata.X concatenated with adata.obs"""
+    tsne = TSNE(n_components=2, random_state=random_state, **kwargs)
+    x_tsne = tsne.fit_transform(adata.X)
+    df = pd.DataFrame(dict(tsne_1=x_tsne[:, 0], tsne_2=x_tsne[:, 1]), index=adata.obs.index)
+    if cat_obs:
+        df = pd.concat([adata.obs, df], axis=1)
+    return df
+
+
+def plot_tsne(adata: ad.AnnData, label="ct", as_categorical=True, title=None, ax=None) -> pd.DataFrame:
+    """Plots the t-SNE embedding of adata colored by label."""
+    df = embed_tsne(adata)
+    if as_categorical:
+        df[label] = df[label].astype("category")
+    sns.scatterplot(df, x="tsne_1", y="tsne_2", hue=label, ax=ax)
+    if title is not None:
+        plt.title(title)
+    return df
+
+
+def plot_scatter_grid(df, *, x=None, y=None, col=None, add_legend=True, **kwargs) -> sns.FacetGrid:
+    g = sns.FacetGrid(df, col=col, **kwargs)
+    g.map_dataframe(sns.scatterplot, x=x, y=y)
+    if add_legend:
+        g.add_legend()
+    return g
+
+
+def plot_tsne_matrix():
+    raise NotImplementedError()
+
+
+def plot_shared_tsne_matrix(adata: ad.AnnData, group="sample_id", label="ct", col_wrap=5, add_legend=True, n_jobs=None, **kwargs):
+    df = embed_tsne(adata, n_jobs=n_jobs)
+    g = sns.FacetGrid(df, col=group, col_wrap=col_wrap, hue=label, **kwargs)
+    g.map_dataframe(sns.scatterplot, x="tsne_1", y="tsne_2")
+    if add_legend:
+        g.add_legend()
+    return df

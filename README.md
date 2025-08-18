@@ -16,6 +16,10 @@
 
 > Generate synthetic cytometry data for classification tasks
 
+> Will probably not be maintained!
+> Checkout FlowCyPy instead: https://github.com/MartinPdeS/FlowCyPy
+
+
 This package provides modular and highly configurable tools to generate synthetic flow cytometry/CyTOF data for classification tasks.
 Supported formats are `fcs` and `h5ad`.
 

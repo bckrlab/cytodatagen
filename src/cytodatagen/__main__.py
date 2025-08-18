@@ -107,12 +107,13 @@ def main():
 
     output_group = parser.add_argument_group("output")
     output_group.add_argument("--format", choices=["h5ad", "fcs"], default="h5ad")
-    output_group.add_argument("-o", "--output", type=Path, default="cytodata")
+    output_group.add_argument("-o", "--output", type=Path, default="cytodata", help="output directory path")
     output_group.add_argument("-v", "--verbose", action="store_true")
 
     args = parser.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
+
     setup_logging(args.output, args.verbose)
 
     if args.file is not None:
