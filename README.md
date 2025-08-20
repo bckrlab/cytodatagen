@@ -12,12 +12,14 @@
 
 [![Project generated with PyScaffold](https://img.shields.io/badge/-PyScaffold-005CA0?logo=pyscaffold)](https://pyscaffold.org/)
 
+> :warning: cytodatagen takes a very naive approach to generate cytometry data.
+> You might want to checkout [FlowCyPy](https://github.com/MartinPdeS/FlowCyPy) instead!
+> FlowCyPy attempts to generate realistic SSC and FSC signals by regarding the fluiddynamics, optics and electronics of a flow cytometer.
+> However, at the time of writing, FlowCyPy didn't yet support generating flourescence signals.
+
 # cytodatagen
 
 > Generate synthetic cytometry data for classification tasks
-
-> Will probably not be maintained!
-> Checkout FlowCyPy instead: https://github.com/MartinPdeS/FlowCyPy
 
 
 This package provides modular and highly configurable tools to generate synthetic flow cytometry/CyTOF data for classification tasks.
@@ -55,6 +57,11 @@ python -m cytodatagen --help
 # generate data from command line
 python -m cytodatagen -o cytodata --format fcs
 ```
+
+## Related
+
+- [FlowCyPy](https://github.com/MartinPdeS/FlowCyPy)
+- Cheung et al.: [*Systematic Design, Generation, and Application of Synthetic Datasets for Flow Cytometry*](https://doi.org/10.5731/pdajpst.2021.012659) (2022)
 
 ## Acknowledgements
 

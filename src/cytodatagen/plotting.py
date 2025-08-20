@@ -41,22 +41,27 @@ def plot_tsne(adata: ad.AnnData, label="ct", as_categorical=True, title=None, ax
     return df
 
 
-def plot_scatter_grid(df, *, x=None, y=None, col=None, add_legend=True, **kwargs) -> sns.FacetGrid:
+def plot_tsne_matrix():
+
+    raise NotImplementedError()
+
+
+def plot_shared_tsne_matrix(adata: ad.AnnData, col="sample_id", hue="ct", col_wrap=5, add_legend=True, n_jobs=None, **kwargs):
+    """Creates a matrix of t-SNE scatterplots with a shared t-SNE embedding space for all group members."""
+    df = embed_tsne(adata, n_jobs=n_jobs)
+    g = sns.FacetGrid(df, col=col, col_wrap=col_wrap, hue=hue, **kwargs)
+    g.map_dataframe(sns.scatterplot, x="tsne_1", y="tsne_2")
+    if add_legend:
+        g.add_legend()
+    return df
+
+
+def plot_scatter_grid(adata: ad.AnnData, *, x=None, y=None, col=None, add_legend=True, **kwargs) -> sns.FacetGrid:
+    """Creates a scatterplot FacetGrid of variables x,y in adata.X, grouped by adata.obs[col]."""
+    df = pd.DataFrame(adata[:, [x, y]], columns=[x, y], index=adata.obs.index)
+    df[col] = adata.obs[col]
     g = sns.FacetGrid(df, col=col, **kwargs)
     g.map_dataframe(sns.scatterplot, x=x, y=y)
     if add_legend:
         g.add_legend()
     return g
-
-
-def plot_tsne_matrix():
-    raise NotImplementedError()
-
-
-def plot_shared_tsne_matrix(adata: ad.AnnData, group="sample_id", label="ct", col_wrap=5, add_legend=True, n_jobs=None, **kwargs):
-    df = embed_tsne(adata, n_jobs=n_jobs)
-    g = sns.FacetGrid(df, col=group, col_wrap=col_wrap, hue=label, **kwargs)
-    g.map_dataframe(sns.scatterplot, x="tsne_1", y="tsne_2")
-    if add_legend:
-        g.add_legend()
-    return df
