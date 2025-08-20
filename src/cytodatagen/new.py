@@ -30,10 +30,10 @@ class StatsDist(MarkerDist):
     def sample(self, n=1, rng=None):
         rng = np.random.default_rng(rng)
         x = np.asarray(self.dist.sample(n))
-        if len(x) != len(self.markers):
-            raise RuntimeError("dimensions of data and markers doesn't match")
         if x.ndim == 1:
             x = x.reshape(n, 1)
+        if x.shape[-1] != len(self.markers):
+            raise RuntimeError("dimensions of data and markers doesn't match")
         df = pd.DataFrame(x, columns=self.markers)
         return df
 
@@ -78,7 +78,7 @@ class CellPopulation:
 class SubjectClass:
     def __init__(self, name: str, alpha, populations: list[CellPopulation]):
         self.name = name
-        self.alpha = alpha
+        self.alpha = np.asarray(alpha)
         self.populations = populations
         if len(self.alpha) != len(self.populations):
             raise ValueError("length mismatch of alpha prior and cell populations")
@@ -92,17 +92,18 @@ class SubjectClass:
             adata = population.sample(n, rng)
             adatas.append(adata)
         adata = ad.concat(adatas, axis=0)
-        adata["label"] = self.name
+        adata.obs["label"] = self.name
         adata.obs = adata.obs.add_prefix("cell_", axis=0)
         return adata
 
-    def sample_dist(self, n: int = 10_000, rng=None):
+    def sample_dist(self, n: int = 10_000, rng=None) -> np.ndarray:
         """Samples cell type proportions from a Dirichlet distribution."""
         rng = np.random.default_rng(rng)
-        dist = np.floor(rng.dirichlet(self.alpha) * n)
+        dist = np.floor(rng.dirichlet(self.alpha) * n).astype(int)
         remainder = n - dist.sum()
-        leftover = rng.choice(np.arange(len(self.alpha)), remainder, p=self.alpha)
-        dist = dist + np.bincount(leftover)
+        if remainder > 0:
+            leftover = rng.choice(np.arange(len(self.alpha)), remainder, replace=True)
+            dist = dist + np.bincount(leftover)
         assert dist.sum() == n
         return dist
 
@@ -198,3 +199,12 @@ class CytoDataGen:
 
         adata = ad.concat(adatas)
         return adata
+
+
+if __name__ == "__main__":
+    dist = StatsDist(["cd_1", "cd_2", "cd_3"], dist=stats.Normal(mu=[0, 1, 2]))
+    print(dist.sample(10).head())
+    pop = CellPopulation("a_cell", dist=dist)
+    sclass = SubjectClass("positive", alpha=[2], populations=[pop])
+    s = sclass.sample()
+    print(s.obs.head())
