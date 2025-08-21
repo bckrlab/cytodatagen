@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import scipy.stats as stats
 import anndata as ad
+import dataclasses as dc
 
 
 class MarkerDist(abc.ABC):
@@ -101,9 +102,11 @@ class SubjectClass:
         rng = np.random.default_rng(rng)
         dist = np.floor(rng.dirichlet(self.alpha) * n).astype(int)
         remainder = n - dist.sum()
+        # sum of dist might not match n due to rounding errors
         if remainder > 0:
             leftover = rng.choice(np.arange(len(self.alpha)), remainder, replace=True)
-            dist = dist + np.bincount(leftover)
+            values, counts = np.unique(leftover, return_counts=True)
+            dist[values] += counts
         assert dist.sum() == n
         return dist
 
@@ -112,6 +115,9 @@ class Transform(abc.ABC):
     @abc.abstractmethod
     def apply(self, adata: ad.AnnData, rng=None) -> ad.AnnData:
         pass
+
+    def __call__(self, adata: ad.AnnData, rng=None):
+        return self.apply(adata, rng)
 
 
 class SinhTransform(Transform):
@@ -160,29 +166,38 @@ class BatchTransform(Transform):
 
     def apply(self, adata: ad.AnnData, rng=None) -> ad.AnnData:
         rng = np.random.default_rng(rng)
-        for i, (subject_id) in enumerate(adata.obs["subject_id"].unique()):
-            mask = (adata.obs["subject_id"] == subject_id)
-            shift = rng.normal(scale=self.scale)
-            adata[:, mask] = adata[:, mask] + shift
-            adata.obs.loc[mask]["batch_id"] = i
-            adata.obs.loc[mask]["batch_shift"] = shift
+        # randomly assign subjects to batches
+        subject_ids = adata.obs["subject_id"]
+        ids = subject_ids.unique()
+        batch_ids = rng.permuted(np.arange(len(ids)) % self.n_batch)
+        batch_shifts = rng.normal(scale=self.scale, size=self.n_batch)[batch_ids]
+        df = pd.DataFrame({"batch_id": batch_ids, "batch_shift": batch_shifts}, index=ids)
+        # apply batch shifts
+        adata.X += df.loc[subject_ids]["batch_shift"].to_numpy()[:, np.newaxis]
+        adata.obs["batch_id"] = df.loc[subject_ids]["batch_id"].to_numpy()
+        adata.obs["batch_shift"] = df.loc[subject_ids]["batch_shift"].to_numpy()
         return adata
 
 
-class CytoDataGenBuilder:
-    """Assits in constructing a new CytoDataGen object from a config."""
+@dc.dataclass
+class CytoDataGenConfig:
+    pass
 
-    def __init__(self):
-        pass
+
+class CytoDataGenBuilder:
+    """Assists in constructing a new CytoDataGen object from a config."""
+
+    def __init__(self, config: CytoDataGenConfig):
+        self.config = config
 
     def build(self):
         pass
 
 
 class CytoDataGen:
-    def __init__(self, classes: list[SubjectClass]):
+    def __init__(self, classes: list[SubjectClass], transform: Transform = None):
         self.classes = classes
-        pass
+        self.transform = transform
 
     def generate(self, n_samples_per_class: int, rng=None) -> ad.AnnData:
         rng = np.random.default_rng(rng)
@@ -198,6 +213,10 @@ class CytoDataGen:
                 subject_id += 1
 
         adata = ad.concat(adatas)
+
+        if self.transform is not None:
+            adata = self.transform(adata, rng=rng)
+
         return adata
 
 
@@ -208,3 +227,9 @@ if __name__ == "__main__":
     sclass = SubjectClass("positive", alpha=[2], populations=[pop])
     s = sclass.sample()
     print(s.obs.head())
+    s2 = sclass.sample()
+    adata = ad.concat({"s1": s, "s2": s2}, label="subject_id")
+    xform = BatchTransform(n_batch=2)
+    adata = xform.apply(adata)
+    print(adata.obs.head())
+    print(adata.obs.describe())
