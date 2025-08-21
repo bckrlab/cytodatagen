@@ -1,6 +1,7 @@
 import abc
 import pandas as pd
 import numpy as np
+import numpy.typing as npt
 import scipy.stats as stats
 import anndata as ad
 import dataclasses as dc
@@ -179,22 +180,131 @@ class BatchTransform(Transform):
         return adata
 
 
+class ComposedTransform(Transform):
+    def __init__(self, transforms: list[Transform]):
+        super().__init__()
+        self.transforms = transforms
+
+    def apply(self, adata, rng=None):
+        for xform in self.transforms:
+            adata = xform(adata, rng=rng)
+        return adata
+
+
 @dc.dataclass
-class CytoDataGenConfig:
-    pass
+class CytoDataGenBuilderConfig:
+    n_class: int = 2
+    n_markers: int = 30
+    marker_names: list[str] = None
+    class_names: list[str] = None
+    ct_names: list[str] = None
+    n_ct: int = 5
+    n_signal_markers: int = 3
+    n_signal_ct: int = 2
+    ct_alpha: float | npt.ArrayLike = 5.0
+    ct_mean_loc: float = 3
+    ct_mean_scale: float = 1.0
+    ct_scale: float = 1.0
+    transforms: dict = dc.field(default_factory=dict)
 
 
 class CytoDataGenBuilder:
     """Assists in constructing a new CytoDataGen object from a config."""
 
-    def __init__(self, config: CytoDataGenConfig):
+    _xforms = {
+        "sinh": SinhTransform,
+        "exp": ExpTransform,
+        "noise": NoiseTransform,
+        "batch": BatchTransform
+    }
+
+    def __init__(self, config: CytoDataGenBuilderConfig):
         self.config = config
 
-    def build(self):
-        pass
+    def check_config(self):
+        if self.config.marker_names is not None and len(self.config.marker_names) != self.config.n_markers:
+            raise ValueError("length of marker_names does not match n_markers")
+
+    def build(self, rng=None):
+        rng = np.random.default_rng(rng)
+        self.check_config()
+        marker_names = self.build_marker_names()
+        ct_names = self.build_ct_names()
+        xform = self.build_transform()
+        # generate mu and sigma of control class
+        mu = self.build_class_mu(rng)[np.newaxis].repeat(self.config.n_class, axis=0)
+        sigma = self.build_class_sigma(rng)[np.newaxis].repeat(self.config.n_class, axis=0)
+        # generate signals
+        mu_signal = np.stack([self.build_class_mu(rng) for i in range(self.config.n_class)])
+        sigma_signal = np.stack([self.build_class_sigma(rng) for i in range(self.config.n_class)])
+        signal_class = np.arange(1, self.config.n_class)
+        signal_ct = np.stack([rng.choice(np.arange(self.config.n_ct), size=self.config.n_signal_ct, replace=False) for i in range(self.config.n_class)])[:, :, np.newaxis]
+        signal_markers = np.stack([rng.choice(np.arange(self.config.n_markers), size=(self.config.n_signal_markers, self.config.n_signal_ct), replace=False) for i in range(self.config.n_class)])
+        # replace parameters with signal distributions
+        # numpy will automatically broadcast the signal indices to (n_signal_class, n_signal_ct, n_signal_markers)
+        mu_idx = (signal_class, signal_ct[signal_class], signal_markers[signal_class])
+        mu[mu_idx] = mu_signal[mu_idx]
+        # signal markers in signal_ct will also express different covariance
+        sigma_idx = (signal_class, signal_ct[signal_class], signal_markers[signal_class], signal_markers[signal_class])
+        sigma[sigma_idx] = sigma_signal[sigma_idx]
+
+        alpha = self.config.ct_alpha
+        alpha = np.array([alpha for i in range(self.config.n_ct)]) if np.isscalar(alpha) else np.asarray(alpha)
+        alpha = alpha[np.newaxis].repeat(self.config.n_class, axis=0)
+
+        classes = []
+        for i in range(self.config.n_class):
+            pops = []
+            for j in range(self.config.n_ct):
+                dist = stats.Normal(mu=mu[i, j], sigma=sigma[i, j])
+                mdist = StatsDist(marker_names, dist)
+                pop = CellPopulation(ct_names[j], mdist)
+                pops.append(pop)
+            subject_class = SubjectClass(f"class_{i}", alpha[i], pops)
+            classes.append(subject_class)
+        generator = CytoDataGen(classes=classes, transform=xform)
+        return generator
+
+    def build_class_mu(self, rng=None):
+        rng = np.random.default_rng(rng)
+        size = [self.config.n_ct, self.config.n_markers]
+        mu = rng.normal(loc=self.config.ct_mean_loc, scale=self.config.ct_mean_scale, size=size)
+        return mu
+
+    def build_class_sigma(self, rng=None):
+        rng = np.random.default_rng(rng)
+        size = [self.config.n_ct, self.config.n_markers, self.config.n_markers]
+        sigma = rng.normal(size=size)
+        # trick to make sure sigma is valid covariance matrix
+        sigma = sigma @ sigma.T
+        diag = np.diag(sigma)
+        sigma = sigma / np.outer(diag, diag)
+        sigma = self.config.ct_scale * sigma * self.config.ct_scale
+        return sigma
+
+    def build_transform(self):
+        xforms = []
+        for key, value in self.config.transforms.items():
+            xform_cls = self._xforms[key]
+            xform = xform_cls(**value)
+            xforms.append(xform)
+        xform = ComposedTransform(xforms)
+        return xform
+
+    def build_marker_names(self):
+        marker_names = self.config.marker_names
+        if marker_names is None:
+            marker_names = [f"cd_{i}" for i in self.config.n_markers]
+        return marker_names
+
+    def build_ct_names(self, rng=None):
+        rng = np.random.default_rng()
+        ct_names = [f"ct_{i}" for i in self.config.n_ct]
+        return ct_names
 
 
 class CytoDataGen:
+
     def __init__(self, classes: list[SubjectClass], transform: Transform = None):
         self.classes = classes
         self.transform = transform
