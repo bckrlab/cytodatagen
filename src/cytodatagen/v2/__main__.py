@@ -9,7 +9,7 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-from cytodatagen.io import write_fcs, write_h5ad
+from cytodatagen.io import write_fcs, write_h5ad, write_parquet
 from .generator import CytoDataGenBuilder, CytoDataGenBuilderConfig
 
 
@@ -63,11 +63,12 @@ def main():
     config_group.add_argument("--n-ct", type=int, default=5)
     config_group.add_argument("--ct-mean-loc", type=float, default=5)
     config_group.add_argument("--ct-mean-scale", type=float, default=1)
-    config_group.add_argument("--ct-scale", type=float, default=1.0)
+    config_group.add_argument("--ct-scale-min", type=float, default=0.5)
+    config_group.add_argument("--ct-scale-max", type=float, default=2.0)
     config_group.add_argument("--ct-alpha", type=float, default=5)
-    config_group.add_argument("--n-markers", type=int, default=30)
+    config_group.add_argument("--n-marker", type=int, default=30)
 
-    config_group.add_argument("--n-signal-markers", type=int, default=3)
+    config_group.add_argument("--n-signal-marker", type=int, default=3)
     config_group.add_argument("--n-signal-ct", type=int, default=3)
 
     config_group.add_argument("--add-batch-xform", action="store_true")
@@ -109,12 +110,15 @@ def main():
             n_samples_per_class=args.n_samples_per_class,
             n_cells_min=args.n_cells_min,
             n_cells_max=args.n_cells_max,
-            n_markers=args.n_markers,
+            n_marker=args.n_marker,
+            n_signal_marker=args.n_signal_marker,
             n_ct=args.n_ct,
+            n_signal_ct=args.n_signal_ct,
             ct_alpha=args.ct_alpha,
             ct_mean_loc=args.ct_mean_loc,
             ct_mean_scale=args.ct_mean_scale,
-            ct_scale=args.ct_scale,
+            ct_scale_min=args.ct_scale_min,
+            ct_scale_max=args.ct_scale_max,
             transforms=xforms
         )
 
@@ -131,6 +135,8 @@ def main():
         write_h5ad(args.output, adata)
     elif args.format == "fcs":
         write_fcs(args.output, adata, sample_id="sample_id")
+    elif args.format == "parquet":
+        write_parquet(args.output, adata, sample_id="sample_id")
 
 
 if __name__ == "__main__":
