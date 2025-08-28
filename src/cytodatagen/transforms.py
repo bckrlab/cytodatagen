@@ -84,3 +84,28 @@ class ComposedTransform(Transform):
         for xform in self.transforms:
             adata = xform(adata, rng=rng)
         return adata
+
+
+class TransformBuilder:
+
+    _xforms = {
+        "sinh": SinhTransform,
+        "exp": ExpTransform,
+        "noise": NoiseTransform,
+        "batch": BatchTransform
+    }
+
+    def __init__(self, transforms: dict):
+        self.transforms = dict() if transforms is None else transforms
+
+    def __call__(self):
+        return self.build()
+
+    def build(self):
+        xforms = []
+        for key, value in self.transforms.items():
+            xform_cls = self._xforms[key]
+            xform = xform_cls(**value)
+            xforms.append(xform)
+        xform = ComposedTransform(xforms)
+        return xform

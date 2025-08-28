@@ -1,273 +1,132 @@
-#!/usr/bin/env python
-
-"""
-Standalone script to generate synthetic cytometry data.
-"""
-
-import numpy as np
-import anndata as ad
-import logging
 import pandas as pd
+import numpy as np
 import numpy.typing as npt
+import anndata as ad
 import dataclasses as dc
 
-from typing import Literal, Union
-from pathlib import Path
-from tqdm import tqdm, trange
-
-from cytodatagen.effects import BatchEffect, ClassSignalEffect, SwitchCompositionEffect, CompositionEffect, ExpXformEffect, ExpressionEffect, NoiseEffect, SinhXformEffect
-
-logger = logging.getLogger(__name__)
-
-_config_args_doc = """
-    Args:
-        n_class (int): number of classes, including one control class without composition or expressoin effects
-        n_samples_per_class (int): number of samples in each class
-        n_cells_min (int): minimum number of cells per sample
-        n_cells_max (int): maximum number of cels per sample
-        n_markers (int): number of markers, i.e., cell features
-        n_ct (int): total number of distinct cell types
-        ct_alpha (float|ArrayLike): alpha for sampling the cell type counts in each sample from a Dirichlet distribution
-        ct_mean_loc (float): mean to sample the cell type means from
-        ct_mean_scale (float): sd for sampling the cell type means
-        composition_effects (dict): specification {effect_key: kwargs} of composition effects
-        expression_effects (dict): specification {effect_key: kwargs} of expression effects
-        seed (int): seed for the random generator
-"""
+from cytodatagen.subjects import MultivariateNormalSubjectBuilder, Subject, SubjectBuilderConfig
+from cytodatagen.transforms import BatchTransform, ComposedTransform, ExpTransform, SinhTransform, Transform, NoiseTransform, TransformBuilder
+from tqdm import tqdm
 
 
 @dc.dataclass
-class CytoDataGeneratorConfig:
+class CytoDataGenBuilderConfig:
     n_class: int = 2
     n_samples_per_class: int = 30
-    n_cells_min: int = 1024
-    n_cells_max: int = 1024
-    n_markers: int = 30
+    n_marker: int = 30
+    marker_names: list[str] = None
+    class_names: list[str] = None
+    ct_names: list[str] = None
+    n_cells_min: int = 10_000
+    n_cells_max: int = 10_000
     n_ct: int = 5
-    ct_alpha: Union[float, npt.ArrayLike] = 1.0
+    n_signal_marker: int = 3
+    n_signal_ct: int = 2
+    ct_alpha: float | npt.ArrayLike = 5.0
     ct_mean_loc: float = 3
     ct_mean_scale: float = 1.0
-    expression_effects: dict = dc.field(default_factory=dict)
-    composition_effects: dict = dc.field(default_factory=dict)
-    seed: int = 19
+    ct_scale_min: float = 0.5
+    ct_scale_max: float = 2.0
+    transforms: dict = dc.field(default_factory=dict)
 
 
-CytoDataGeneratorConfig.__doc__ = """
-Configuration for the CytoDataGenerator.
+class CytoDataGenBuilder:
+    """Assists in constructing a new CytoDataGen object from a config."""
 
-{args}
-""".format(args=_config_args_doc)
-
-
-class CytoDataGenerator:
-
-    CT_NAME_1 = ["big", "hungry", "mean", "nihilistic", "blue", "red", "green", "nasty", "wobbly", "tiny", "angry", "happy", "cheeky", "creepy"]
-    CT_NAME_2 = ["stem", "blood", "skin", "bone", "muscle", "fat", "nerve", "endothelial", "pancreatic", "immune"]
-
-    COMPOSITION_EFFECTS = {
-        "switch": SwitchCompositionEffect
-    }
-
-    EXPRESSION_EFFECTS = {
-        "batch": BatchEffect,
-        "noise": NoiseEffect,
-        "sinh": SinhXformEffect,
-        "exp": ExpXformEffect,
-        "signal": ClassSignalEffect,
-    }
-
-    def __init__(
-        self,
-        config: CytoDataGeneratorConfig
-    ):
+    def __init__(self, config: CytoDataGenBuilderConfig):
         self.config = config
-        self.rng: np.random.Generator = None
-        self.params: dict = None
-        self.composition_effects: dict[str, CompositionEffect] = None
-        self.expression_effects: dict[str, ExpressionEffect] = None
-        self.params_composition: dict[str, dict] = None
-        self.params_expression: dict[str, dict] = None
 
-    def generate(self) -> ad.AnnData:
-        self.parse_config()
-        self.generate_params()
+    def check_config(self):
+        if self.config.marker_names is not None and len(self.config.marker_names) != self.config.n_marker:
+            raise ValueError("length of marker_names does not match n_markers")
 
-        # generate samples
-        samples = []
-        labels = []
-        for class_id in range(self.config.n_class):
-            class_samples = self.generate_class(class_id)
-            samples.extend(class_samples)
-            labels.extend([class_id for sample in class_samples])
-        self.pbar.close()
-        adata = ad.concat(samples)
+    def build(self, rng=None):
+        rng = np.random.default_rng(rng)
+        self.check_config()
+        marker_names = self.build_marker_names()
+        ct_names = self.build_ct_names()
 
-        # add metadata
-        adata.uns["config"] = dc.asdict(self.config)
-        adata.uns["labels"] = labels
-        adata.uns["params"] = self.params
-        adata.uns["params_composition"] = self.params_composition
-        adata.uns["params_expression"] = self.params_expression
-        return adata
+        # build transforms
+        xform_builder = TransformBuilder(self.config.transforms)
+        xform = xform_builder.build()
 
-    def parse_config(self):
-        self.rng = np.random.default_rng(self.config.seed)
-        if self.config.n_cells_min > self.config.n_cells_max:
-            raise ValueError("n_cells_min should be less or equal n_cells_max")
+        # TODO: this is a bit redundant...
+        builder_config = SubjectBuilderConfig(
+            n_marker=self.config.n_marker,
+            n_signal_marker=self.config.n_signal_marker,
+            marker_names=marker_names,
+            ct_names=ct_names,
+            n_ct=self.config.n_ct,
+            n_signal_ct=self.config.n_signal_ct,
+            ct_alpha=self.config.ct_alpha,
+            ct_mean_loc=self.config.ct_mean_loc,
+            ct_mean_scale=self.config.ct_mean_scale,
+            ct_scale_min=self.config.ct_scale_min,
+            ct_scale_max=self.config.ct_scale_max
+        )
 
-        self.pbar = tqdm(total=self.config.n_class * self.config.n_samples_per_class)
-        ct_alpha = self.config.ct_alpha
-        self.ct_alpha = np.repeat(ct_alpha, self.config.n_ct) if np.isscalar(ct_alpha) else np.array(ct_alpha)
+        subject_builder = MultivariateNormalSubjectBuilder(builder_config)
 
-        self.composition_effects = dict()
-        for key, value in self.config.composition_effects.items():
-            cls = self.COMPOSITION_EFFECTS[key]
-            if isinstance(value, CompositionEffect):
-                effect = value
-            else:
-                effect = cls(**value)
-            self.composition_effects[key] = effect
+        # build control and signal classes
+        classes = [subject_builder.build_control("control", rng=rng)]
+        for i in range(self.config.n_class - 1):
+            signal_class = subject_builder.build_signal(f"signal_{i}", rng=rng)
+            classes.append(signal_class)
 
-        self.expression_effects = dict()
-        for key, value in self.config.expression_effects.items():
-            cls = self.EXPRESSION_EFFECTS[key]
-            if isinstance(value, ExpressionEffect):
-                effect = value
-            else:
-                effect = cls(**value)
-            self.expression_effects[key] = effect
+        # instantiate and return generator
+        generator = CytoDataGen(
+            n_samples_per_class=self.config.n_samples_per_class,
+            n_cells_min=self.config.n_cells_min,
+            n_cells_max=self.config.n_cells_max,
+            classes=classes,
+            transform=xform
+        )
 
-    def generate_params(self) -> dict:
-        """Generates all parameters, e.g., for cell type distributions."""
-        self.params = dict()
+        return generator
 
-        # generate cell type data
-        self.params["ct_names"] = np.asarray([self.get_ct_name() for i in range(self.config.n_ct)])
-        self.params["ct_means"] = np.stack([self.rng.normal(self.config.ct_mean_loc, self.config.ct_mean_scale, size=self.config.n_markers) for i in range(self.config.n_ct)])
-        self.params["ct_covs"] = [self.rng.normal(size=(self.config.n_markers, self.config.n_markers)) for i in range(self.config.n_ct)]
-        self.params["ct_covs"] = np.stack([cov @ cov.T for cov in self.params["ct_covs"]])
+    def build_marker_names(self):
+        marker_names = self.config.marker_names
+        if marker_names is None:
+            marker_names = [f"cd_{i}" for i in range(self.config.n_marker)]
+        return marker_names
 
-        self.params_composition = dict()
-        for key, effect in self.composition_effects.items():
-            effect.fit_params(self.config.n_class, self.config.n_samples_per_class, self.config.n_markers, self.config.n_ct, rng=self.rng)
-            self.params_composition[key] = effect.params
+    def build_ct_names(self, rng=None):
+        rng = np.random.default_rng()
+        ct_names = [f"ct_{i}" for i in range(self.config.n_ct)]
+        return ct_names
 
-        self.params_expression = dict()
-        for key, effect in self.expression_effects.items():
-            effect.fit_params(self.config.n_class, self.config.n_samples_per_class, self.config.n_markers, self.config.n_ct, rng=self.rng)
-            self.params_expression[key] = effect.params
 
-    def generate_class(self, class_id: int):
-        samples = []
+class CytoDataGen:
 
-        n = self.config.n_samples_per_class
-        for i in range(n):
-            sample_id = n * class_id + i
-            sample = self.generate_sample(class_id, sample_id)
-            samples.append(sample)
-            self.pbar.update()
-        return samples
+    def __init__(self, classes: list[Subject], n_samples_per_class: int = 30, n_cells_min=10_000, n_cells_max: int = 10_000, transform: Transform = None):
+        self.classes = classes
+        self.transform = transform
+        self.n_samples_per_class = n_samples_per_class
+        self.n_cells_min = n_cells_min
+        self.n_cells_max = n_cells_max
 
-    def generate_sample(self, class_id: int, sample_id: int) -> ad.AnnData:
-        """generates a new sample for the given cell type means/variances and class label."""
-        alpha = self.apply_composition_effects(class_id, sample_id, np.array(self.ct_alpha))
-        ct_counts = self.generate_ct_counts(alpha)
-        ct_ids = np.repeat(np.arange(self.config.n_ct), ct_counts)
-        cells = []
-        for i in range(self.config.n_ct):
-            ct_cells = self.rng.multivariate_normal(self.params["ct_means"][i], cov=self.params["ct_covs"][i], size=ct_counts[i])
-            cells.append(ct_cells)
-        x = np.concatenate(cells)
+    def generate(self, rng=None, with_progress=True) -> ad.AnnData:
+        rng = np.random.default_rng(rng)
+        adatas = []
 
-        obs = pd.DataFrame({
-            "sample_id": sample_id,
-            "class_id": class_id,
-            "ct": ct_ids,
-            "ct_name": self.params["ct_names"][ct_ids],
-        }, index=[f"sample_{sample_id}_cell_{i}" for i in range(len(x))])
+        subject_id = 0
+        total = len(self.classes) * self.n_samples_per_class
+        pbar = tqdm(total=total, disable=not with_progress)
+        for cls in self.classes:
+            pbar.set_description(f"class {cls.name}")
+            for i in range(self.n_samples_per_class):
+                n = rng.integers(self.n_cells_min, self.n_cells_max, endpoint=True)
+                adata = cls.sample(n=n, rng=rng)
+                adata.obs["subject_id"] = subject_id
+                adata.obs = adata.obs.add_prefix(f"subject_{subject_id}_", axis=0)
+                adatas.append(adata)
+                subject_id += 1
+                pbar.update()
+        pbar.close()
 
-        adata = ad.AnnData(X=x, obs=obs)
-        adata.var_names = self.get_var_names()
-        adata = self.apply_expression_effects(class_id, sample_id, adata)
+        adata = ad.concat(adatas)
+
+        if self.transform is not None:
+            adata = self.transform(adata, rng=rng)
 
         return adata
-
-    def apply_composition_effects(self, class_id: int, sample_id: int, alpha: np.ndarray) -> np.ndarray:
-        for key, effect in self.composition_effects.items():
-            alpha = effect.apply(class_id, sample_id, alpha, rng=self.rng)
-        return alpha
-
-    def apply_expression_effects(self, class_id: int, sample_id: int, adata: ad.AnnData) -> ad.AnnData:
-        for key, effect in self.expression_effects.items():
-            adata = effect.apply(class_id, sample_id, adata, rng=self.rng)
-        return adata
-
-    def generate_ct_counts(self, alpha: np.ndarray) -> np.ndarray:
-        """samples the counts of each cell type in a sample from a dirichlet distribution"""
-        # generate cell type counts
-        alpha = np.repeat(alpha, self.config.n_ct) if np.isscalar(alpha) else np.asarray(alpha)
-        n_cells = self.rng.integers(self.config.n_cells_min, self.config.n_cells_max, endpoint=True)
-        ct_counts = np.floor(self.rng.dirichlet(alpha) * n_cells).astype(int)
-        # distribute remainder due to floating point errors
-        ct_remainder = n_cells - ct_counts.sum()
-        ids, counts = np.unique(self.rng.choice(np.arange(self.config.n_ct), size=ct_remainder), return_counts=True)
-        ct_counts[ids] += counts
-        return ct_counts
-
-    def __call__(self, *args, **kwds):
-        return self.generate()
-
-    def get_ct_name(self) -> str:
-        name_1 = self.rng.choice(self.CT_NAME_1)
-        name_2 = self.rng.choice(self.CT_NAME_2)
-        return f"{name_1}_{name_2}_cell"
-
-    def get_var_names(self) -> np.ndarray:
-        return np.array([f"cd_{i}" for i in range(self.config.n_markers)])
-
-
-def make_cyto_data(
-    n_class: int = 2,
-    n_samples_per_class: int = 30,
-    n_cells_min: int = 1024,
-    n_cells_max: int = 1024,
-    n_markers: int = 30,
-    n_ct: int = 5,
-    ct_mean_loc: float = 3,
-    ct_mean_scale: float = 1.0,
-    ct_alpha: Union[float, npt.ArrayLike] = 1.0,
-    composition_effects: dict = None,
-    expression_effects: dict = None,
-    seed=19
-) -> ad.AnnData:
-    composition_effects = dict() if composition_effects is None else composition_effects
-    expression_effects = dict() if expression_effects is None else expression_effects
-
-    # a bit awkward to repeat args like that...
-    config = CytoDataGeneratorConfig(
-        n_class=n_class,
-        n_samples_per_class=n_samples_per_class,
-        n_cells_min=n_cells_min,
-        n_cells_max=n_cells_max,
-        n_markers=n_markers,
-        n_ct=n_ct,
-        ct_mean_loc=ct_mean_loc,
-        ct_mean_scale=ct_mean_scale,
-        ct_alpha=ct_alpha,
-        composition_effects=composition_effects,
-        expression_effects=expression_effects,
-        seed=seed
-    )
-
-    generator = CytoDataGenerator(config)
-
-    adata = generator.generate()
-
-    return adata
-
-
-make_cyto_data.__doc__ = """
-Procedural interface for generating synthetic cytometry data.
-
-{args}
-""".format(args=_config_args_doc)

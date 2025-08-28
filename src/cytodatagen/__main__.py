@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import argparse
 import json
 import logging
 import datetime as dt
@@ -7,8 +8,9 @@ import argparse
 
 from pathlib import Path
 
-from cytodatagen.generator import make_cyto_data
-from cytodatagen.io import write_fcs, write_h5ad
+import numpy as np
+from cytodatagen.io import write_fcs, write_h5ad, write_parquet
+from cytodatagen.generator import CytoDataGenBuilder, CytoDataGenBuilderConfig
 
 
 logger = logging.getLogger(__name__)
@@ -24,45 +26,29 @@ def setup_logging(path: Path, verbose: bool = False):
     logger.info("writing log file to: %s", log_path)
 
 
-def make_composition_effects(args):
-    composition_effects = dict()
-    if args.add_switch_effect:
-        composition_effects["switch"] = {
-            "n_switch_ct": args.n_switch_ct,
-            "p_switch": args.p_switch
-        }
-    return composition_effects
+def make_transforms(args) -> dict:
+    xforms = {}
 
-
-def make_expression_effects(args):
-    expression_effects = dict()
-    if args.add_signal_effect:
-        expression_effects["signal"] = {
-            "n_signal_markers": args.n_signal_markers,
-            "n_signal_ct": args.n_signal_ct,
-            "p_cell": args.p_cell,
-            "p_sample": args.p_sample,
-        }
-
-    if args.add_batch_effect:
-        expression_effects["batch"] = {
+    if args.add_batch_xform:
+        xforms["batch"] = {
             "n_batch": args.n_batch,
             "scale": args.batch_scale
         }
 
-    if args.add_sinh_effect:
-        expression_effects["sinh"] = {
+    if args.add_sinh_xform:
+        xforms["sinh"] = {
             "cofactor": args.cofactor
         }
 
-    if args.add_exp_effect:
-        expression_effects["exp"] = {}
+    if args.add_exp_xform:
+        xforms["exp"] = {}
 
-    if args.add_noise_effect:
-        expression_effects["noise"] = {
+    if args.add_noise_xform:
+        xforms["noise"] = {
             "marker_snr_db": args.marker_snr_db
         }
-    return expression_effects
+
+    return xforms
 
 
 def main():
@@ -77,30 +63,25 @@ def main():
     config_group.add_argument("--n-ct", type=int, default=5)
     config_group.add_argument("--ct-mean-loc", type=float, default=5)
     config_group.add_argument("--ct-mean-scale", type=float, default=1)
-    config_group.add_argument("--ct-alpha", type=float, default=1)
-    config_group.add_argument("--n-markers", type=int, default=30)
+    config_group.add_argument("--ct-scale-min", type=float, default=0.5)
+    config_group.add_argument("--ct-scale-max", type=float, default=2.0)
+    config_group.add_argument("--ct-alpha", type=float, default=5)
+    config_group.add_argument("--n-marker", type=int, default=30)
 
-    config_group.add_argument("--add-signal-effect", action="store_true")
-    config_group.add_argument("--n-signal-markers", type=int, default=3)
+    config_group.add_argument("--n-signal-marker", type=int, default=3)
     config_group.add_argument("--n-signal-ct", type=int, default=3)
-    config_group.add_argument("--p-cell", type=float, default=0.5)
-    config_group.add_argument("--p-sample", type=float, default=0.5)
 
-    config_group.add_argument("--add-switch-effect", action="store_true")
-    config_group.add_argument("--n-switch-ct", type=int, default=2)
-    config_group.add_argument("--p-switch", type=float, default=0.9)
-
-    config_group.add_argument("--add-batch-effect", action="store_true")
+    config_group.add_argument("--add-batch-xform", action="store_true")
     config_group.add_argument("--n-batch", type=int, default=3)
     config_group.add_argument("--batch-scale", type=float, default=1)
 
-    config_group.add_argument("--add-noise-effect", action="store_true")
+    config_group.add_argument("--add-noise-xform", action="store_true")
     config_group.add_argument("--marker-snr-db", type=float, default=20)
 
-    config_group.add_argument("--add-sinh-effect", action="store_true")
+    config_group.add_argument("--add-sinh-xform", action="store_true")
     config_group.add_argument("--cofactor", type=int, default=5)
 
-    config_group.add_argument("--add-exp-effect", action="store_true")
+    config_group.add_argument("--add-exp-xform", action="store_true")
 
     config_group.add_argument("--seed", type=int, default=19, help="random seed")
     config_group.add_argument("-f", "--file", type=Path, default=None, help="parse config from json file instead")
@@ -115,37 +96,47 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
 
     setup_logging(args.output, args.verbose)
+    logger.info("args: %s", args)
 
     if args.file is not None:
         logger.info("reading config from json file: other config options will be ignored")
         with open(args.file) as config_file:
             config = json.load(config_file)
     else:
-        composition_effects = make_composition_effects(args)
-        expression_effects = make_expression_effects(args)
+        xforms = make_transforms(args)
 
         config = dict(
             n_class=args.n_class,
             n_samples_per_class=args.n_samples_per_class,
             n_cells_min=args.n_cells_min,
             n_cells_max=args.n_cells_max,
-            n_markers=args.n_markers,
+            n_marker=args.n_marker,
+            n_signal_marker=args.n_signal_marker,
             n_ct=args.n_ct,
+            n_signal_ct=args.n_signal_ct,
+            ct_alpha=args.ct_alpha,
             ct_mean_loc=args.ct_mean_loc,
             ct_mean_scale=args.ct_mean_scale,
-            ct_alpha=args.ct_alpha,
-            composition_effects=composition_effects,
-            expression_effects=expression_effects,
-            seed=args.seed
+            ct_scale_min=args.ct_scale_min,
+            ct_scale_max=args.ct_scale_max,
+            transforms=xforms
         )
 
     logger.info("config: %s", json.dumps(config))
-    adata = make_cyto_data(**config)
+
+    rng = np.random.default_rng(args.seed)
+
+    config = CytoDataGenBuilderConfig(**config)
+    builder = CytoDataGenBuilder(config)
+    gen = builder.build(rng=rng)
+    adata = gen.generate(rng=rng)
 
     if args.format == "h5ad":
         write_h5ad(args.output, adata)
     elif args.format == "fcs":
         write_fcs(args.output, adata, sample_id="sample_id")
+    elif args.format == "parquet":
+        write_parquet(args.output, adata, sample_id="sample_id")
 
 
 if __name__ == "__main__":
