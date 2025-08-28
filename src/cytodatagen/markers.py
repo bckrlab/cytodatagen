@@ -32,7 +32,7 @@ class NamedMarkerDistribution(MarkerDistribution):
         rng = np.random.default_rng(rng)
         x = np.asarray(self.dist.sample(n))
         if x.ndim == 1:
-            x = x.reshape(n, 1)
+            x = x.reshape(n, -1)
         if x.shape[-1] != len(self.markers):
             raise RuntimeError("dimensions of data and markers doesn't match")
         df = pd.DataFrame(x, columns=self.markers)

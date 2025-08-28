@@ -43,6 +43,13 @@ class Subject:
         assert dist.sum() == n
         return dist
 
+    def to_dict(self) -> dict:
+        d = {
+            "name": self.name,
+            "populations": [pop.to_dict() for pop in self.populations]
+        }
+        return d
+
 
 @dc.dataclass
 class SubjectBuilderConfig:

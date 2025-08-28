@@ -25,7 +25,9 @@ class MultivariateNormal(Distribution):
 
     def sample(self, n: int = 1, rng=None):
         rng = np.random.default_rng(rng)
-        x = rng.multivariate_normal(mean=self.mean, cov=self.cov, size=n)
+        # for consistency, we want to return shape (m) if n==1, else (n,m)
+        size = None if n == 1 else n
+        x = rng.multivariate_normal(mean=self.mean, cov=self.cov, size=size)
         return x
 
 
@@ -38,4 +40,8 @@ class JoinedDistribution(Distribution):
     def sample(self, n=1, rng=None):
         rng = np.random.default_rng(rng)
         xs = [dist.sample(n, rng=rng) for dist in self.dists]
-        return np.stack(xs)
+        if n == 1:
+            xs = np.concatenate(xs)
+        else:
+            xs = np.concatenate(xs, axis=1)
+        return xs

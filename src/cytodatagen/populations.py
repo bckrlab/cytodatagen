@@ -31,6 +31,12 @@ class CellPopulation(abc.ABC):
     def _sample(self, n: int = 1, rng=None) -> pd.DataFrame:
         pass
 
+    def to_dict(self) -> dict:
+        d = {
+            "name": self.name
+        }
+        return d
+
 
 class DistributionPopulation(CellPopulation):
     def __init__(self, name: str, dist: MarkerDistribution):
@@ -52,14 +58,13 @@ class ControlPopulation(CellPopulation):
         self, name: str, markers: list[str], mean: np.ndarray = None, var: np.ndarray = None, cov_norm: np.ndarray = None,
     ):
         super().__init__(name)
-        rng = np.random.default_rng(rng)
         self.markers = markers
         self._mean = mean.copy()
         self._var = var.copy()
         self._cov_norm = cov_norm.copy()
 
     def _sample(self, n=1, rng=None) -> pd.DataFrame:
-        rng = np.random.normal(rng)
+        rng = np.random.default_rng(rng)
         df = self.dist.sample(n, rng)
         return df
 
@@ -116,7 +121,6 @@ class ControlPopulationBuilder:
         rng = np.random.default_rng(rng)
         mean = rng.normal(self.mean_loc, self.mean_scale, size=len(self.markers))
         var = rng.uniform(low=self.scale_low, high=self.scale_high, size=len(self.markers))
-        # cov needs to be positive semi-definite (PSD)
         cov_norm = rng.normal(size=(len(self.markers), len(self.markers)))
         cov_norm = cov_norm @ cov_norm.T
         # norm diagonals, so that we have more control via var
@@ -132,11 +136,13 @@ class SignalPopulation(CellPopulation):
         super().__init__(control.name)
         self.control = control
         self.signal_markers = signal_markers
-        self._mean = mean
-        self._var = var
+        self._mean = mean.copy()
+        self._var = var.copy()
 
     def _sample(self, n=1, rng=None):
-        return super().sample(n, rng)
+        rng = np.random.default_rng(rng)
+        df = self.dist.sample(n, rng)
+        return df
 
     @property
     def mean(self):
