@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from cytodatagen.dist import JoinedDistribution, MultivariateNormal
+from cytodatagen.dists import JoinedDistribution, MultivariateNormal
 
 
 @pytest.fixture

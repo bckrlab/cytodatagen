@@ -3,13 +3,14 @@ import anndata as ad
 import numpy as np
 import numpy.typing as npt
 
-from cytodatagen.dist import MultivariateNormal
+from cytodatagen.dists import MultivariateNormal
 from cytodatagen.markers import NamedMarkerDistribution
-from cytodatagen.populations import DistributionPopulation
+from cytodatagen.populations import ControlPopulationBuilder, DistributionPopulation
+from cytodatagen.registry import pop_registry
 
 
 class Subject:
-    def __init__(self, name: str, alpha, populations: list[DistributionPopulation]):
+    def __init__(self, name: str, alpha: npt.ArrayLike, populations: list[DistributionPopulation]):
         self.name = name
         self.alpha = np.asarray(alpha)
         self.populations = populations
@@ -20,17 +21,17 @@ class Subject:
         """Samples n cells from the populations with proportions given by alpha."""
         rng = np.random.default_rng(rng)
         adatas = {}
-        dist = self.sample_dist(n, rng)
+        dist = self.sample_pop_proportions(n, rng)
         for i, (n, population) in enumerate(zip(dist, self.populations)):
             adata = population.sample(n, rng)
-            adata.obs["ct_id"] = i
+            adata.obs["pop_id"] = i
             adatas[population.name] = adata
         adata = ad.concat(adatas, axis=0, index_unique="_")
-        adata.obs["label"] = self.name
+        adata.obs["subject"] = self.name
         adata.obs.index = [f"cell_{i}" for i in range(len(adata.obs))]
         return adata
 
-    def sample_dist(self, n: int = 10_000, rng=None) -> np.ndarray:
+    def sample_pop_proportions(self, n: int = 10_000, rng=None) -> np.ndarray:
         """Samples cell type proportions from a Dirichlet distribution."""
         rng = np.random.default_rng(rng)
         dist = np.floor(rng.dirichlet(self.alpha) * n).astype(int)
@@ -44,11 +45,50 @@ class Subject:
         return dist
 
     def to_dict(self) -> dict:
-        d = {
+        data = {
+            "_target_": "subject",
             "name": self.name,
+            "alpha": self.alpha.tolist(),
             "populations": [pop.to_dict() for pop in self.populations]
         }
-        return d
+        return data
+
+    @classmethod
+    def from_dict(cls, data):
+        pops = []
+        pops_data = data["populations"]
+        for pop_data in pops_data:
+            key = pop_data["_target_"]
+            pop = pop_registry.get(key).from_dict(pop_data)
+            pops.append(pop)
+        return cls(data["name"], data["alpha"], pops)
+
+
+class ControlSubjectBuilder:
+
+    def __init__(
+        self, name: str, alpha, ct_names: list[str], marker_names: list[str],
+        mean_loc: float = 5.0, mean_scale: float = 1.0,
+        scale_low: float = 1.0, scale_high: float = 1.0
+    ):
+        self.name = name
+        pass
+
+    def build(self, name: str, alpha):
+        populations = []
+        for ct in self.ct_names:
+            builder = ControlPopulationBuilder(
+                name=ct
+            )
+            population = builder.build()
+            populations.append(population)
+        return Subject(name=name, alpha=self.alpha, populations=populations)
+
+
+class SignalSubjectBuilder:
+
+    def __init__(self, control_subject: Subject):
+        pass
 
 
 @dc.dataclass

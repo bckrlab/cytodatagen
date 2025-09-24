@@ -3,6 +3,8 @@ import numpy as np
 import numpy.typing as npt
 import scipy.stats as stats
 
+from cytodatagen.registry import dist_registry
+
 
 class Distribution(abc.ABC):
     """Base class for random distributions, since scipy's new API still seems to be a bit unstable."""
@@ -14,14 +16,22 @@ class Distribution(abc.ABC):
     def __call__(self, n: int = 1, rng=None) -> np.ndarray:
         return self.sample(n, rng=rng)
 
+    def to_dict(self) -> dict:
+        raise NotImplementedError()
 
+    @classmethod
+    def from_dict(cls, data):
+        raise NotImplementedError()
+
+
+@dist_registry.register_class("mv_normal")
 class MultivariateNormal(Distribution):
     """Multivariate Normal Distribution."""
 
-    def __init__(self, mean, cov):
+    def __init__(self, mean: npt.ArrayLike, cov: npt.ArrayLike):
         super().__init__()
-        self.mean = mean
-        self.cov = cov
+        self.mean = np.asarray(mean)
+        self.cov = np.asarray(cov)
 
     def sample(self, n: int = 1, rng=None):
         rng = np.random.default_rng(rng)
@@ -30,7 +40,20 @@ class MultivariateNormal(Distribution):
         x = rng.multivariate_normal(mean=self.mean, cov=self.cov, size=size)
         return x
 
+    def to_dict(self):
+        data = {
+            "_target_": "mv_normal",
+            "mean": self.mean.tolist(),
+            "cov": self.mean.tolist()
+        }
+        return data
 
+    @classmethod
+    def from_dict(cls, data):
+        return cls(data["mean"], data["cov"])
+
+
+@dist_registry.register_class("joined_dist")
 class JoinedDistribution(Distribution):
     """Join distributions together."""
 
@@ -45,3 +68,20 @@ class JoinedDistribution(Distribution):
         else:
             xs = np.concatenate(xs, axis=1)
         return xs
+
+    def to_dict(self):
+        dists = [dist.to_dict() for dist in self.dists]
+        data = {
+            "_target_": "joined_dist",
+            "dists": dists
+        }
+        return data
+
+    @classmethod
+    def from_dict(cls, data):
+        dists = []
+        for dist in data["dists"]:
+            key = dist["_target_"]
+            d = dist_registry.get(key).from_dict(dist)
+            dists.append(d)
+        return cls(dists)
