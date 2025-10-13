@@ -1,7 +1,11 @@
+"""
+Provides the Subject class for sampling cells.
+Also implements a CLI for generating control and signal subjects and store them as subjects.json.
+"""
+
 import argparse
 import json
 import dataclasses as dc
-from pathlib import Path
 import anndata as ad
 import numpy as np
 import numpy.typing as npt
@@ -10,6 +14,7 @@ from cytodatagen.dists import MultivariateNormal
 from cytodatagen.markers import NamedMarkerDistribution
 from cytodatagen.populations import ControlPopulation, ControlPopulationBuilder, DistributionPopulation, SignalPopulationBuilder
 from cytodatagen.registry import pop_registry
+from pathlib import Path
 
 
 class Subject:
@@ -99,7 +104,6 @@ class ControlSubjectBuilder:
             pop_builder = ControlPopulationBuilder(
                 name=pop_name,
                 markers=self.marker_names,
-
             )
             population = pop_builder.build(rng=rng)
             populations.append(population)

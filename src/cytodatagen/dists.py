@@ -1,3 +1,7 @@
+"""
+Provides basic probability distributions for sampling values.
+"""
+
 import abc
 import numpy as np
 import numpy.typing as npt

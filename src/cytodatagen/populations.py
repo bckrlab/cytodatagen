@@ -1,3 +1,7 @@
+"""
+Provides cell populations to sample cells with marker values from as AnnData objects.
+"""
+
 import abc
 import pandas as pd
 import anndata as ad

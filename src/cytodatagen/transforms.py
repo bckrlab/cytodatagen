@@ -1,4 +1,6 @@
-"""Transform effects on synthetic data."""
+"""
+Transform effects on synthetic data, like SinhTransform.
+"""
 
 
 import abc
