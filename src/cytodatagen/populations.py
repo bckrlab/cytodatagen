@@ -160,8 +160,10 @@ class ControlPopulationBuilder:
         cov_norm = rng.normal(size=(len(self.markers), len(self.markers)))
         cov_norm = cov_norm @ cov_norm.T
         # norm diagonals, so that we have more control via var
+        # watch out that cov_norm is still symmetric and PSD!
         D = np.diag(cov_norm)
-        cov_norm = cov_norm / D
+        D_inv_sqrt = np.diag(1.0 / np.sqrt(D))
+        cov_norm = D_inv_sqrt @ cov_norm @ D_inv_sqrt
         return ControlPopulation(self.name, self.markers, mean, var, cov_norm)
 
 

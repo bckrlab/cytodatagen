@@ -2,7 +2,6 @@
 Transform effects on synthetic data, like SinhTransform.
 """
 
-
 import abc
 import anndata as ad
 import numpy as np
@@ -111,7 +110,7 @@ class BatchTransform(Transform):
         return adata
 
     def to_dict(self):
-        return {"_target_": "batch"}
+        return {"_target_": "batch", "n_batch": self.n_batch, "scale": self.scale}
 
     @classmethod
     def from_dict(cls, data):

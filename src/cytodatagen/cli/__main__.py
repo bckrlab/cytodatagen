@@ -9,8 +9,8 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-from cytodatagen.io import write_fcs, write_h5ad, write_parquet
-from cytodatagen.generator import CytoDataGenBuilder, CytoDataGenBuilderConfig
+from cytodatagen.utils.io import write_fcs, write_h5ad, write_parquet
+from cytodatagen.cli.generator import CytoDataGenBuilder, CytoDataGenBuilderConfig
 
 
 logger = logging.getLogger(__name__)

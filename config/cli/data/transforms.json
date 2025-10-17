@@ -1,0 +1,15 @@
+[
+    {
+        "_target_": "noise",
+        "snr_db": 20
+    },
+    {
+        "_target_": "sinh",
+        "cofactor": 5
+    },
+    {
+        "_target_": "batch",
+        "n_batch": 5,
+        "scale": 1
+    }
+]
