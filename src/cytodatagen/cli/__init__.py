@@ -1,3 +1,3 @@
 """
-Command line interfaces for generating data.
+Command line interfaces for generating subjects and data.
 """

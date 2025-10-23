@@ -3,6 +3,9 @@
     "subject_names": ["control", "positive"],
     "n_pop": 5,
     "n_signal_pop": 2,
-    "n_marker": 30,
-    "n_signal_marker": 3
+    "n_marker": 5,
+    "n_signal_marker": 2,
+    "mean_scale": 1.0,
+    "scale_low": 0.1,
+    "scale_high": 0.5
 }

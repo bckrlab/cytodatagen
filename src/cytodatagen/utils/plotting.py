@@ -42,7 +42,7 @@ def plot_tsne_matrix():
     raise NotImplementedError()
 
 
-def plot_shared_tsne_grid(adata: ad.AnnData, col="sample_id", hue="ct", col_wrap=None, add_legend=True, n_jobs=None, **kwargs):
+def plot_shared_tsne_grid(adata: ad.AnnData, col="sample_id", hue="pop", col_wrap=None, add_legend=True, n_jobs=None, **kwargs):
     """Creates a matrix of t-SNE scatterplots with a shared t-SNE embedding space for all group members."""
     df = embed_tsne(adata, n_jobs=n_jobs)
     g = sns.FacetGrid(df, col=col, col_wrap=col_wrap, hue=hue, **kwargs)
@@ -63,7 +63,7 @@ def plot_scatter_grid(adata: ad.AnnData, *, x=None, y=None, col=None, add_legend
     return g
 
 
-def plot_marker_dists(adata: ad.AnnData, hue="label", inner="quart", **kwargs):
+def plot_marker_dists(adata: ad.AnnData, hue="subject", inner="quart", **kwargs):
     """Violin plot for marker distributions."""
     marker_cols = adata.var_names.to_list()
     df = adata_to_df(adata, with_obs=True)
@@ -73,13 +73,13 @@ def plot_marker_dists(adata: ad.AnnData, hue="label", inner="quart", **kwargs):
     return ax
 
 
-def plot_ct_dists(adata: ad.AnnData, hue="label", stat="percent"):
+def plot_ct_dists(adata: ad.AnnData, x="pop_name", hue="subject", stat="percent"):
     """Plots cell type distributions."""
     df = adata.obs
-    sns.histplot(df, x="ct_name", hue=hue, stat=stat)
+    sns.histplot(df, x=x, hue=hue, stat=stat)
 
 
-def plot_marker_pairplot(adata: ad.AnnData, markers=None, kind="kde", hue="label", **kwargs):
+def plot_marker_pairplot(adata: ad.AnnData, markers=None, kind="kde", hue="subject", **kwargs):
     """Plots pairplot for marker distributions."""
     if markers is not None:
         adata = adata[:, markers]

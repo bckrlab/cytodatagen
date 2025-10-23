@@ -207,7 +207,7 @@ class SignalPopulation(CellPopulation):
     @property
     def mdist(self) -> MarkerDistribution:
         dist = MultivariateNormal(self.mean, self.cov)
-        mdist = NamedMarkerDistribution(markers=self.markers, dist=dist)
+        mdist = NamedMarkerDistribution(markers=self.control.markers, dist=dist)
         return mdist
 
     def to_dict(self):
@@ -227,7 +227,7 @@ class SignalPopulation(CellPopulation):
             control=control,
             signal_markers=data["signal_markers"],
             mean_signal=data["mean_signal"],
-            mean_var=data["mean_var"]
+            var_signal=data["var_signal"]
         )
         return pop
 
@@ -245,7 +245,7 @@ class SignalPopulationBuilder:
         self.scale_low = scale_low
         self.scale_high = scale_high
 
-    def build(self, rng=None) -> Self:
+    def build(self, rng=None) -> SignalPopulation:
         rng = np.random.default_rng(rng)
         markers = self.control.markers
         mean = rng.normal(self.mean_loc, self.mean_scale, size=len(markers))

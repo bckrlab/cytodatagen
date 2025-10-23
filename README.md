@@ -21,7 +21,7 @@
 
 > Generate synthetic cytometry data for classification tasks
 
-This package provides modular and highly configurable tools to generate synthetic flow cytometry/CyTOF data for classification tasks.
+This package provides tools to generate synthetic flow cytometry/CyTOF data for classification tasks.
 Supported formats are `fcs` and `h5ad`.
 
 The synthetic data generated with `cytodatagen` assumes that subjects differ either in:
@@ -49,11 +49,15 @@ The package provides a CLI:
 python -m cytodatagen --help
 
 # generate subjects.json configuration file and adjust it later
-python -m cytodatagen.cli.subjects config/subjects/config.json -o artifacts/subjects.json --seed 19
+python -m cytodatagen.cli.subjects config/cli/subjects/config.json -o artifacts/subjects.json --seed 19
 
 # generate data from command line
 python -m cytodatagen.cli.data -o artifacts/cytodata --format fcs
+
+python -m cytodatagen.cli.data -o artifacts/demo --format h5ad --subjects config/cli/data/subjects.json --transforms config/cli/data/transforms.json --seed 19
 ```
+
+Look at the scripts `scripts/make_subjects.sh` and `scripts/make_data.sh` for more examples.
 
 ## Related
 

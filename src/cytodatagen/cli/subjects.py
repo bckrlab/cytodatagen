@@ -47,6 +47,10 @@ class ControlSubjectBuilder:
             pop_builder = ControlPopulationBuilder(
                 name=pop_name,
                 markers=self.marker_names,
+                mean_loc=self.mean_loc,
+                mean_scale=self.mean_scale,
+                scale_low=self.scale_low,
+                scale_high=self.scale_high
             )
             population = pop_builder.build(rng=rng)
             populations.append(population)
@@ -85,10 +89,13 @@ class SignalSubjectBuilder:
         rng = np.random.default_rng(rng)
         pops = []
         for control_pop in self.control_populations:
-            if control_pop in self.signal_pops:
-                signal_markers = self.signal_markers[pop]
+            if control_pop.name in self.signal_pops:
+                signal_markers = self.signal_markers[control_pop.name]
                 # map marker names to ids
-                signal_markers = [i for i, marker in signal_markers if marker in signal_markers]
+                signal_markers = [
+                    i for i, marker in enumerate(control_pop.markers) if marker in signal_markers
+                ]
+
                 pop_builder = SignalPopulationBuilder(
                     control_pop,
                     signal_markers,
@@ -243,7 +250,9 @@ class SubjectGenerator:
             for subject in subject_names:
                 signal_marker[subject] = dict()
                 for pop in signal_pop[subject]:
-                    signal_marker[subject][pop] = rng.choice(marker_names, size=self.config.n_marker)
+                    signal_marker[subject][pop] = rng.choice(
+                        marker_names, size=self.config.n_signal_marker, replace=False
+                    )
         return signal_marker
 
 

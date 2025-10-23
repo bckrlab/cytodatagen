@@ -9,9 +9,9 @@ import logging
 
 from cytodatagen.subjects import Subject
 from cytodatagen.transforms import ComposedTransform, Transform
-from pathlib import Path
-
 from cytodatagen.utils.io import write_fcs, write_h5ad, write_parquet
+from pathlib import Path
+from tqdm import tqdm
 
 # 1. reconstruct subjects from json
 # 2. add transforms
@@ -36,13 +36,18 @@ class DataGenerator:
     def generate(self, rng=None):
         rng = np.random.default_rng(rng)
         samples = []
-        for subject in self.subjects:
-            for i in range(self.config.n_samples_per_subject):
-                n_cells = rng.uniform(self.config.n_cells_min, self.config.n_cells_max)
-                sample = subject.sample(n=n_cells, rng=rng)
-                samples.append(sample)
-        samples = ad.concat(samples, axis=0, label="sample_id", index_unique="_")
+        with tqdm(total=len(self.subjects) * self.config.n_samples_per_subject) as pbar:
+            for subject in self.subjects:
+                for i in range(self.config.n_samples_per_subject):
+                    n_cells = rng.uniform(self.config.n_cells_min, self.config.n_cells_max)
+                    sample = subject.sample(n=n_cells, rng=rng)
+                    samples.append(sample)
+                    pbar.update()
+        keys = np.arange(len(samples))
+        samples = ad.concat(samples, axis=0, label="sample_id", keys=keys, index_unique="_sample_")
         # apply transforms
+        for transform in self.transforms:
+            samples = transform.apply(samples)
         return samples
 
 

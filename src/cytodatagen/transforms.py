@@ -71,7 +71,7 @@ class NoiseTransform(Transform):
         rng = np.random.default_rng(rng)
         signal_scale = adata.X.std(axis=0)
         noise_scale = signal_scale / self.snr
-        noise = rng.normal(scale=noise_scale)
+        noise = rng.normal(scale=noise_scale, size=adata.shape)
         adata.X = adata.X + noise
         adata.layers["noise"] = noise
         return adata
@@ -90,23 +90,24 @@ class NoiseTransform(Transform):
 
 @xform_registry.register_class("batch")
 class BatchTransform(Transform):
-    def __init__(self, n_batch: int, scale: float = 1.0):
+    def __init__(self, n_batch: int, scale: float = 1.0, key="sample_id"):
         super().__init__()
         self.n_batch = n_batch
         self.scale = scale
+        self.key = key
 
     def apply(self, adata: ad.AnnData, rng=None) -> ad.AnnData:
         rng = np.random.default_rng(rng)
         # randomly assign subjects to batches
-        subject_ids = adata.obs["subject_id"]
-        ids = subject_ids.unique()
+        sample_ids = adata.obs[self.key]
+        ids = sample_ids.unique()
         batch_ids = rng.permuted(np.arange(len(ids)) % self.n_batch)
         batch_shifts = rng.normal(scale=self.scale, size=self.n_batch)[batch_ids]
         df = pd.DataFrame({"batch_id": batch_ids, "batch_shift": batch_shifts}, index=ids)
         # apply batch shifts
-        adata.X += df.loc[subject_ids]["batch_shift"].to_numpy()[:, np.newaxis]
-        adata.obs["batch_id"] = df.loc[subject_ids]["batch_id"].to_numpy()
-        adata.obs["batch_shift"] = df.loc[subject_ids]["batch_shift"].to_numpy()
+        adata.X += df.loc[sample_ids]["batch_shift"].to_numpy()[:, np.newaxis]
+        adata.obs["batch_id"] = df.loc[sample_ids]["batch_id"].to_numpy()
+        adata.obs["batch_shift"] = df.loc[sample_ids]["batch_shift"].to_numpy()
         return adata
 
     def to_dict(self):
