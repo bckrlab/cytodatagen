@@ -38,9 +38,13 @@ The synthetic data generated with `cytodatagen` assumes that subjects differ eit
 ## Installation
 
 ```sh
+# install via pip
+pip install cytodatagen
+
+# or install from source
 pip install -e .
 
-# or install with extras for jupyter notebooks
+# install with extras for jupyter notebooks
 pip install -e .[notebook]
 ```
 
