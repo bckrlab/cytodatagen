@@ -31,6 +31,10 @@ The synthetic data generated with `cytodatagen` assumes that subjects differ eit
 2. cell type composition
      - example: positive subjects have a higher T-cell count
 
+![pairplot](docs/figures/pairplot.png)
+
+![t-SNE](docs/figures/tsne.png)
+
 ## Installation
 
 ```sh
