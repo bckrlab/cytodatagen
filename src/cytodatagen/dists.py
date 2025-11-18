@@ -5,7 +5,6 @@ Provides basic probability distributions for sampling values.
 import abc
 import numpy as np
 import numpy.typing as npt
-import scipy.stats as stats
 
 from cytodatagen.registry import dist_registry
 

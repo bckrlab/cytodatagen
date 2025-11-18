@@ -46,10 +46,13 @@ The package provides a CLI:
 
 ```sh
 # display help message
-python -m cytodatagen --help
+python -m cytodatagen.cli.subjects --help
 
 # generate subjects.json configuration file and adjust it later
 python -m cytodatagen.cli.subjects config/cli/subjects/config.json -o artifacts/subjects.json --seed 19
+
+# display help message
+python -m cytodatagen.cli.data --help
 
 # generate data from command line
 python -m cytodatagen.cli.data -o artifacts/cytodata --format fcs
