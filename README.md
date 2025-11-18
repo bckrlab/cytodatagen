@@ -73,7 +73,7 @@ Look at the scripts `scripts/make_subjects.sh` and `scripts/make_data.sh` for mo
 ## Related
 
 - [FlowCyPy](https://github.com/MartinPdeS/FlowCyPy)
-- Yant et al.: [*Cytomulate: accurate and efficient simulation of CyTOF data*](https://doi.org/10.1186/s13059-023-03099-1) (2023)
+- Yang et al.: [*Cytomulate: accurate and efficient simulation of CyTOF data*](https://doi.org/10.1186/s13059-023-03099-1) (2023)
 - Cheung et al.: [*Systematic Design, Generation, and Application of Synthetic Datasets for Flow Cytometry*](https://doi.org/10.5731/pdajpst.2021.012659) (2022)
 
 ## Acknowledgements
